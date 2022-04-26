@@ -38,6 +38,18 @@ variable "lambda_archive" {
   default     = "temp/newrelic-log-ingestion.zip"
 }
 
+variable "lambda_archive_s3_bucket" {
+  type        = string
+  description = "The S3 bucket to the lambda archive"
+  default     = null
+}
+
+variable "lambda_archive_s3_key" {
+  type        = string
+  description = "The S3 key to the lambda archive"
+  default     = null
+}
+
 variable "build_lambda" {
   type        = bool
   description = "Build the Lambda with Docker?"
@@ -91,11 +103,14 @@ data "aws_partition" "current" {}
 data "aws_region" "current" {}
 
 locals {
-  aws_account_id = data.aws_caller_identity.current.account_id
-  aws_partition  = data.aws_partition.current.partition
-  aws_region     = data.aws_region.current.name
-  archive_name   = var.lambda_archive
-  archive_folder = dirname(local.archive_name)
+  aws_account_id  = data.aws_caller_identity.current.account_id
+  aws_partition   = data.aws_partition.current.partition
+  aws_region      = data.aws_region.current.name
+  archive_name    = var.lambda_archive
+  archive_folder  = dirname(local.archive_name)
+  archive_from_s3 = var.lambda_archive_s3_bucket != null && var.lambda_archive_s3_key != null
+  archive_bucket  = var.lambda_archive_s3_bucket
+  archive_key     = var.lambda_archive_s3_key
   tags = merge(
     var.tags,
     { "lambda:createdBy" = "Terraform" }
@@ -183,7 +198,9 @@ resource "aws_lambda_function" "ingestion_function" {
     : aws_iam_role.lambda_role.0.arn
   )
   runtime     = "python3.7"
-  filename    = local.archive_name
+  filename    = local.archive_from_s3 ? null : local.archive_name
+  s3_bucket   = local.archive_from_s3 ? local.archive_bucket : null
+  s3_key      = local.archive_from_s3 ? local.archive_key : null
   handler     = "function.lambda_handler"
   memory_size = var.memory_size
   timeout     = var.timeout
